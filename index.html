@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>רישום נוכחות</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #ffffff;
+      color: #111;
+      padding: 1rem;
+      margin: 0;
+      text-align: center;
+    }
+    h1 {
+      margin-bottom: 0.5rem;
+      font-size: 1.6rem;
+    }
+    #datetime {
+      font-size: 1.1rem;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      font-size: 1.1rem;
+      padding: 0.8rem 2rem;
+      margin: 0.5rem;
+      border: none;
+      border-radius: 12px;
+      background-color: #007aff;
+      color: white;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>רישום נוכחות</h1>
+  <div id="datetime">
+    <div id="hebrew-date">טוען תאריך עברי...</div>
+    <div id="gregorian-date">טוען תאריך לועזי...</div>
+    <div id="clock">00:00</div>
+  </div>
+
+  <div>
+    <button onclick="submitAttendance('checkIn')">כניסה</button>
+    <button onclick="submitAttendance('checkOut')">יציאה</button>
+  </div>
+
+   <div style="margin-top:2rem;">
+  <label for="monthSelect">בחר חודש:</label>
+  <select id="monthSelect" style="font-size: 1.1rem; padding: 0.5rem; border-radius: 8px;">
+  </select>
+  <br>
+ <button onclick="shareExcel()">שתף קובץ אקסל</button>
+</div>
+
+  <script>
+    const apiUrl = 'https://script.google.com/macros/s/AKfycbxjRvKnL4FnhwS83GUDjfyU4uzct4roslPnRTTUw0-DaJ3quZrI63gbaObu7bWX7FzmYw/exec'; // ← שנה לכתובת ה־Web App שלך
+
+    // עדכון שעה ותאריך
+    function updateTime() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('clock').textContent = timeStr;
+
+      const dateStr = now.toLocaleDateString('he-IL');
+      document.getElementById('gregorian-date').textContent = `תאריך לועזי: ${dateStr}`;
+
+      const iso = now.toISOString().split('T')[0];
+      fetch(`https://www.hebcal.com/converter?cfg=json&gy=${now.getFullYear()}&gm=${now.getMonth()+1}&gd=${now.getDate()}&g2h=1`)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('hebrew-date').textContent = `תאריך עברי: ${data.hebrew}`;
+        });
+    }
+
+    setInterval(updateTime, 60000);
+    updateTime();
+
+    // שליחת נתוני כניסה/יציאה
+    function submitAttendance(type) {
+      const now = new Date();
+      const isoDate = now.toISOString().split('T')[0];
+      const time = now.toTimeString().slice(0, 5); // HH:MM
+
+      const data = {
+        date: isoDate,
+        checkIn: type === 'checkIn' ? time : undefined,
+        checkOut: type === 'checkOut' ? time : undefined
+      };
+
+      fetch(apiUrl, {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }).then(res => res.text())
+        .then(txt => alert(`נשלח בהצלחה: ${txt}`))
+        .catch(err => alert(`שגיאה בשליחה: ${err}`));
+    }
+// יצירת רשימת חודשים: נוכחי + קודם
+function setupMonthSelect() {
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${("0" + (now.getMonth() + 1)).slice(-2)}`;
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = `${lastMonthDate.getFullYear()}-${("0" + (lastMonthDate.getMonth() + 1)).slice(-2)}`;
+
+  const select = document.getElementById("monthSelect");
+  [thisMonth, lastMonth].forEach(month => {
+    const opt = document.createElement("option");
+    opt.value = month;
+    opt.textContent = `חודש ${month}`;
+    select.appendChild(opt);
+  });
+}
+
+setupMonthSelect()
+
+function downloadExcel() {
+  const selectedMonth = document.getElementById("monthSelect").value;
+
+  // שלח בקשה ל־Apps Script להוריד את הטאב הזה
+  fetch(`${apiUrl}?month=${selectedMonth}`)
+    .then(res => res.blob())
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `נוכחות_${selectedMonth}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    })
+    .catch(err => alert("שגיאה בהורדת הקובץ: " + err));
+}
+
+function shareExcel() {
+  const selectedMonth = document.getElementById("monthSelect").value;
+
+  fetch(`${apiUrl}?month=${selectedMonth}`)
+    .then(res => res.text())
+    .then(url => {
+      if (navigator.share) {
+        navigator.share({
+          title: `קובץ נוכחות לחודש ${selectedMonth}`,
+          text: `הנה קובץ הנוכחות לחודש ${selectedMonth}:`,
+          url: url
+        }).catch(err => {
+          alert("השיתוף בוטל או נכשל");
+        });
+      } else {
+        // fallback לדפדפנים ללא Web Share API
+        prompt("העתק את הקישור לשיתוף:", url);
+      }
+    })
+    .catch(err => alert("שגיאה בקבלת הקובץ: " + err));
+}
+  </script>
+</body>
+</html>
